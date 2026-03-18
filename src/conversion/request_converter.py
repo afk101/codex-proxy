@@ -8,8 +8,29 @@ import logging
 from typing import Any, Optional
 from src.models.responses import ResponsesRequest
 from src.core.constants import Constants
+from src.core.config import config
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_model(original_model: str) -> str:
+    """解析最终使用的模型名称
+
+    当 DEFAULT_MODEL 环境变量已配置，且请求的模型名包含 "gpt" 时，
+    替换为 DEFAULT_MODEL 指定的模型。
+
+    Args:
+        original_model: 客户端请求的原始模型名称
+
+    Returns:
+        最终使用的模型名称
+    """
+    if config.default_model and "gpt" in original_model.lower():
+        logger.info(
+            f"模型替换: '{original_model}' → '{config.default_model}'"
+        )
+        return config.default_model
+    return original_model
 
 
 def convert_responses_to_chat_completion(request: ResponsesRequest) -> dict:
@@ -21,7 +42,9 @@ def convert_responses_to_chat_completion(request: ResponsesRequest) -> dict:
     Returns:
         Chat Completions API 请求字典
     """
-    result = {"model": request.model}
+    # 解析模型名称（可能触发替换）
+    resolved_model = _resolve_model(request.model)
+    result = {"model": resolved_model}
 
     messages = []
 
@@ -44,9 +67,9 @@ def convert_responses_to_chat_completion(request: ResponsesRequest) -> dict:
 
     result["messages"] = messages
 
-    # 转换 max_output_tokens
+    # 转换 max_output_tokens（使用替换后的模型名判断）
     if request.max_output_tokens is not None:
-        if _is_o_series_model(request.model):
+        if _is_o_series_model(resolved_model):
             # o 系列模型使用 max_completion_tokens
             result["max_completion_tokens"] = request.max_output_tokens
         else:

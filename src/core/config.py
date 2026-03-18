@@ -38,6 +38,12 @@ class Config:
             os.environ.get("MAX_RETRIES", str(Constants.DEFAULT_MAX_RETRIES))
         )
 
+        # 模型替换配置
+        # 当请求的模型名包含 "gpt" 时，自动替换为此模型
+        self.default_model = os.environ.get("DEFAULT_MODEL")
+        if self.default_model:
+            print(f"  Model override enabled: models containing 'gpt' will be replaced with '{self.default_model}'")
+
     def validate_client_api_key(self, client_api_key):
         """验证客户端提供的 API 密钥
 
