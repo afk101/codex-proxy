@@ -548,8 +548,8 @@ def _is_o_series_model(model: str) -> bool:
 def _extract_reasoning_effort(reasoning: dict) -> Optional[str]:
     """从 Responses API 的 reasoning 配置中提取 reasoning_effort
 
-    Responses API 格式: {"effort": "high" | "medium" | "low"}
-    Chat Completions API 格式: reasoning_effort = "high" | "medium" | "low"
+    Responses API 格式: {"effort": "xhigh" | "high" | "medium" | "low"}
+    Chat Completions API 格式: reasoning_effort = "xhigh" | "high" | "medium" | "low"
 
     Args:
         reasoning: Responses API 的 reasoning 配置字典
@@ -560,7 +560,9 @@ def _extract_reasoning_effort(reasoning: dict) -> Optional[str]:
     if not isinstance(reasoning, dict):
         return None
     effort = reasoning.get("effort")
-    if effort in ("high", "medium", "low"):
+    # 官方支持的 reasoning effort 值
+    valid_efforts = ("xhigh", "high", "medium", "low")
+    if effort in valid_efforts:
         return effort
     if effort is not None:
         logger.warning(f"未知的 reasoning effort 值: {effort}，已忽略")

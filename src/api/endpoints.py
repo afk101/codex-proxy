@@ -107,7 +107,11 @@ async def create_response(
         # 转换请求格式
         chat_request = convert_responses_to_chat_completion(request)
 
-        logger.debug(f"转换后的 Chat Completions 请求: {json.dumps(chat_request, ensure_ascii=False, default=str)[:2000]}")
+        logger.debug(f"转换后的 Chat Completions 请求: model={chat_request.get('model')}, "
+                     f"stream={chat_request.get('stream')}, "
+                     f"messages_count={len(chat_request.get('messages', []))}, "
+                     f"tools_count={len(chat_request.get('tools', []))}, "
+                     f"reasoning_effort={chat_request.get('reasoning_effort', 'N/A')}")
 
         # 检查客户端是否已断开
         if await http_request.is_disconnected():
