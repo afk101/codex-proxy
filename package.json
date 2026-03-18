@@ -1,0 +1,14 @@
+{
+  "name": "codex-proxy",
+  "version": "1.0.0",
+  "description": "A proxy server that converts OpenAI Responses API requests to Chat Completions API format, enabling Codex CLI to work with OpenAI-compatible API providers.",
+  "bin": {
+    "cxc": "./start_codex_proxy.sh"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
