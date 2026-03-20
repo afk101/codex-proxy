@@ -19,3 +19,7 @@ logger = logging.getLogger(__name__)
 # 降低 uvicorn 日志级别，避免过多输出
 for uvicorn_logger in ["uvicorn", "uvicorn.access", "uvicorn.error"]:
     logging.getLogger(uvicorn_logger).setLevel(logging.WARNING)
+
+# 保留应用自身 DEBUG 日志，压低第三方 SDK/HTTP 客户端的调试噪音
+for noisy_logger in ["openai", "httpx", "httpcore"]:
+    logging.getLogger(noisy_logger).setLevel(logging.INFO)
