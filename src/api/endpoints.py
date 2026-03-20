@@ -90,19 +90,6 @@ async def create_response(
         # 生成唯一请求 ID，用于取消追踪
         request_id = str(uuid.uuid4())
 
-        # 记录原始请求（用于调试）
-        logger.info(f"原始 Responses API 请求: model={request.model}, stream={request.stream}, "
-                     f"tools_count={len(request.tools) if request.tools else 0}, "
-                     f"input_type={'str' if isinstance(request.input, str) else 'list'}")
-        if request.tools:
-            for idx, tool in enumerate(request.tools):
-                logger.info(f"  tool[{idx}]: type={tool.get('type')}, name={tool.get('name')}, "
-                            f"keys={list(tool.keys())}")
-        if isinstance(request.input, list):
-            for idx, item in enumerate(request.input):
-                if isinstance(item, dict):
-                    logger.info(f"  input[{idx}]: type={item.get('type')}, role={item.get('role')}, "
-                                f"keys={list(item.keys())}")
 
         # 转换请求格式
         chat_request = convert_responses_to_chat_completion(request)
