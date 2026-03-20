@@ -457,8 +457,14 @@ def _convert_tools(tools: list[dict]) -> list[dict]:
     Responses API: {type, name, description, parameters}
     Chat Completions: {type: "function", function: {name, description, parameters}}
 
-    注意：跳过 name 为空或不存在的工具，
-    以及非 function 类型的工具（如 computer_use_preview 等）。
+    支持的工具类型：
+    - function: 标准 function calling 工具，直接转换格式
+    - freeform 类工具（如 apply_patch 等 Codex 内建工具）：
+      转换为 function 格式，将 input_schema/schema 映射到 parameters，
+      如果缺少 schema 则构造一个 input 字符串参数
+
+    跳过 name 为空或不存在的工具，
+    以及明确不兼容的工具类型（如 computer_use_preview 等）。
 
     Args:
         tools: Responses API 格式的工具列表
@@ -466,14 +472,17 @@ def _convert_tools(tools: list[dict]) -> list[dict]:
     Returns:
         Chat Completions 格式的工具列表
     """
+    # 明确不兼容、需要跳过的工具类型
+    _SKIP_TOOL_TYPES = {"computer_use_preview", "code_interpreter", "file_search", "web_search_preview"}
+
     converted = []
     for tool in tools:
         tool_type = tool.get("type", Constants.TOOL_FUNCTION)
         tool_name = tool.get("name", "")
 
-        # 跳过非 function 类型的工具（如 code_interpreter, computer_use_preview 等）
-        if tool_type != Constants.TOOL_FUNCTION:
-            logger.warning(f"跳过非 function 类型的工具: type={tool_type}, name={tool_name}")
+        # 跳过明确不兼容的工具类型
+        if tool_type in _SKIP_TOOL_TYPES:
+            logger.warning(f"跳过不兼容的工具类型: type={tool_type}, name={tool_name}")
             continue
 
         # 跳过 name 为空的工具，上游 API 不接受
@@ -481,19 +490,71 @@ def _convert_tools(tools: list[dict]) -> list[dict]:
             logger.warning(f"跳过 name 为空的工具: {tool}")
             continue
 
-        # 清理 parameters schema 中不兼容的属性
-        parameters = _clean_schema(tool.get("parameters", {}))
-
-        converted.append({
-            "type": Constants.TOOL_FUNCTION,
-            "function": {
-                "name": tool_name,
-                "description": tool.get("description", ""),
-                "parameters": parameters,
-            },
-        })
+        if tool_type == Constants.TOOL_FUNCTION:
+            # 标准 function 类型工具，直接转换格式
+            parameters = _clean_schema(tool.get("parameters", {}))
+            converted.append({
+                "type": Constants.TOOL_FUNCTION,
+                "function": {
+                    "name": tool_name,
+                    "description": tool.get("description", ""),
+                    "parameters": parameters,
+                },
+            })
+        else:
+            # 非标准工具类型（freeform、local_shell 等 Codex 内建工具）
+            # 降级为 function 格式：尝试提取 schema，否则构造 input 字符串参数
+            logger.info(f"将非标准工具降级为 function 格式: type={tool_type}, name={tool_name}")
+            parameters = _extract_freeform_tool_parameters(tool)
+            description = tool.get("description", "")
+            # 在描述中追加原始类型信息，帮助上游模型理解工具特性
+            if description and tool_type != Constants.TOOL_FUNCTION:
+                description = f"{description}\n[原始工具类型: {tool_type}，输入为原始文本而非 JSON]"
+            converted.append({
+                "type": Constants.TOOL_FUNCTION,
+                "function": {
+                    "name": tool_name,
+                    "description": description,
+                    "parameters": parameters,
+                    "strict": False,
+                },
+            })
 
     return converted
+
+
+def _extract_freeform_tool_parameters(tool: dict) -> dict:
+    """从非标准工具中提取或构造 parameters schema
+
+    按优先级尝试：
+    1. input_schema 字段（Codex freeform 工具使用）
+    2. schema 字段
+    3. parameters 字段
+    4. 兜底：构造一个 input 字符串参数
+
+    Args:
+        tool: Responses API 格式的工具定义
+
+    Returns:
+        JSON Schema 格式的 parameters
+    """
+    # 按优先级尝试提取已有 schema
+    for schema_key in ("input_schema", "schema", "parameters"):
+        schema = tool.get(schema_key)
+        if isinstance(schema, dict) and schema:
+            return _clean_schema(schema)
+
+    # 兜底：构造一个单 input 字符串参数
+    return {
+        "type": "object",
+        "properties": {
+            "input": {
+                "type": "string",
+                "description": "工具输入内容（原始文本）",
+            },
+        },
+        "required": ["input"],
+    }
 
 
 def _convert_tool_choice(tool_choice: Any) -> Any:
