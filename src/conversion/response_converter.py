@@ -271,6 +271,11 @@ async def convert_chat_stream_to_responses_sse(
         }
         yield _emit_sse_event("error", error_event)
 
+        # 必须发送 response.completed，否则 Codex CLI 报
+        # "stream disconnected before completion: stream closed before response.completed"
+        async for event in _emit_error_completed_events(state):
+            yield event
+
 
 # ========== SSE 事件构建辅助函数 ==========
 
@@ -293,6 +298,57 @@ def _emit_sse_event(event_type: str, data: Any) -> str:
         data = {"type": event_type, **data}
     json_str = json.dumps(data, ensure_ascii=False)
     return f"event: {event_type}\ndata: {json_str}\n\n"
+
+
+async def _emit_error_completed_events(state: StreamState) -> AsyncGenerator[str, None]:
+    """在流式错误后发送 response.completed 事件
+
+    当流式转换过程中发生异常时，必须发送 response.completed 事件，
+    否则 Codex CLI 会报 "stream disconnected before completion" 错误。
+    使用 incomplete 状态和已收集的 output 构建响应对象。
+
+    Args:
+        state: 流式状态
+
+    Yields:
+        SSE 事件字符串
+    """
+    # 收集已打开的 output items，确保关闭状态一致
+    output_items = []
+
+    if state.text_message_opened:
+        output_items.append(_build_complete_message_item(state))
+
+    if state.reasoning_opened:
+        complete_reasoning = {
+            "type": Constants.REASONING,
+            "id": state.reasoning_item_id,
+            "summary": [
+                {
+                    "type": "summary_text",
+                    "text": state.accumulated_reasoning,
+                }
+            ],
+        }
+        output_items.append(complete_reasoning)
+
+    for tc_index, block in state.tool_blocks.items():
+        if block.started:
+            output_items.append(_build_complete_function_call_item(block))
+
+    response_obj = _build_response_object_dict(
+        response_id=state.response_id,
+        model=state.model,
+        status=Constants.STATUS_INCOMPLETE,
+        output=output_items,
+        usage=_convert_usage(state.final_usage),
+        incomplete_details={"reason": "proxy_error"},
+    )
+
+    yield _emit_sse_event(
+        Constants.EVENT_RESPONSE_COMPLETED,
+        {"response": response_obj},
+    )
 
 
 def _emit_response_created_events(state: StreamState) -> list[str]:

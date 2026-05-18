@@ -96,10 +96,19 @@ def convert_responses_to_chat_completion(request: ResponsesRequest) -> dict:
     # 转换 reasoning 配置（Responses API → Chat Completions API）
     # Responses API: {"reasoning": {"effort": "high"}}
     # Chat Completions API: {"reasoning_effort": "high"}
+    # 注意：上游 chat/completions API 不支持 reasoning_effort 与 tools 同时使用，
+    # 当请求同时包含工具时，需要去掉 reasoning_effort 以避免 400 错误
     if request.reasoning is not None:
         reasoning_effort = _extract_reasoning_effort(request.reasoning)
         if reasoning_effort:
-            result["reasoning_effort"] = reasoning_effort
+            has_tools = bool(result.get("tools"))
+            if has_tools:
+                logger.warning(
+                    f"上游 chat/completions API 不支持 reasoning_effort 与 tools 同时使用，"
+                    f"已移除 reasoning_effort={reasoning_effort}"
+                )
+            else:
+                result["reasoning_effort"] = reasoning_effort
 
     # 透传 parallel_tool_calls（Chat Completions API 原生支持）
     if request.parallel_tool_calls is not None:
